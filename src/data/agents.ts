@@ -1,3 +1,9 @@
+import type {
+  AgentDesignConfig,
+  CommandTreeNode,
+  ConnectionFieldConfig,
+} from '../components/AgentDesignModal';
+
 export interface AgentCommand {
   id: string;
   label: string;
@@ -14,15 +20,19 @@ export interface HardwareAgentItem {
   type: 'system' | 'custom';
   industry: string;
   status: 'published';
+  schoolName?: string;
   author?: string;
   publishDate?: string;
   views: string;
+  openCount?: number;
   popularity: number;
   port: string;
   model: string;
   image: string;
   deviceImage: string;
   isHot?: boolean;
+  connectionFields?: ConnectionFieldConfig[];
+  commandTree?: CommandTreeNode[];
   guideBullets: string[];
   guideTip: string;
   guideHighlight?: string;
@@ -46,6 +56,47 @@ export const INITIAL_SYSTEM_AGENTS: HardwareAgentItem[] = [
     image: '/assets/agents/device_1.png',
     deviceImage: '/assets/agents/device_1.png',
     isHot: true,
+    connectionFields: [
+      {
+        id: 'ai-ip',
+        name: '实训主机IP',
+        key: 'hostIp',
+        type: 'input',
+        inputMode: 'text',
+        required: true,
+        placeholder: '192.168.1.64',
+        defaultValue: '192.168.1.64',
+      },
+      {
+        id: 'ai-rtsp-port',
+        name: 'RTSP推流端口',
+        key: 'rtspPort',
+        type: 'input',
+        inputMode: 'number',
+        required: true,
+        placeholder: '554',
+        defaultValue: '554',
+      },
+      {
+        id: 'ai-channel',
+        name: '视频采集通道',
+        key: 'channel',
+        type: 'select',
+        options: ['ch1/main/av_stream', 'ch1/sub/av_stream', 'ch2/main/av_stream'],
+        required: true,
+        defaultValue: 'ch1/main/av_stream',
+      },
+      {
+        id: 'ai-auth-pwd',
+        name: '访问密钥',
+        key: 'accessToken',
+        type: 'input',
+        inputMode: 'password',
+        required: false,
+        placeholder: '请输入设备认证密钥（可选）',
+        defaultValue: '',
+      },
+    ],
     guideBullets: [
       '完整的错误日志/报错截图',
       '您当前运行的代码片段',
@@ -539,6 +590,7 @@ export const INITIAL_CUSTOM_AGENTS: HardwareAgentItem[] = [
     type: 'custom',
     industry: '工业互联网',
     status: 'published',
+    schoolName: '新大陆工程技术学院',
     author: '张**',
     publishDate: '2026-03-24 14:30',
     views: '1.2k',
@@ -547,6 +599,73 @@ export const INITIAL_CUSTOM_AGENTS: HardwareAgentItem[] = [
     model: 'CUSTOM-PLC-01',
     image: '/assets/agents/device_8.png',
     deviceImage: '/assets/agents/device_8.png',
+    connectionFields: [
+      {
+        id: 'plc-ip',
+        name: 'PLC 通讯 IP',
+        key: 'plcIp',
+        type: 'input',
+        inputMode: 'text',
+        required: true,
+        placeholder: '192.168.1.50',
+        defaultValue: '192.168.1.50',
+      },
+      {
+        id: 'plc-port',
+        name: 'TCP 端口号',
+        key: 'plcPort',
+        type: 'input',
+        inputMode: 'number',
+        required: true,
+        placeholder: '5000',
+        defaultValue: '5000',
+      },
+      {
+        id: 'plc-proto',
+        name: '通讯协议',
+        key: 'plcProtocol',
+        type: 'select',
+        options: ['MC-3E (TCP)', 'Modbus-TCP', 'S7-Comm'],
+        required: true,
+        defaultValue: 'MC-3E (TCP)',
+      },
+    ],
+    commandTree: [
+      {
+        id: 'plc-cat-1',
+        label: '梯形图排错指令',
+        nodeType: 'category',
+        children: [
+          {
+            id: 'plc-cmd-1',
+            label: '自锁回路不复位排查',
+            nodeType: 'command',
+            isDefault: true,
+            prompt: '梯形图起保停控制回路按下停止按钮后无法断开',
+            commandCode: 'PLC_CHECK_LADDER --coil=X001 --verify-nc',
+            expectedReply:
+              '梯形图逻辑检查建议：\n1. 核对停止按钮物理接线为常闭还是常开触点；\n2. 确认梯形图中串联的停止软元件 `X001` 触点类型未与物理触点双重取反。',
+          },
+        ],
+      },
+      {
+        id: 'plc-cat-2',
+        label: '寄存器监控指令',
+        nodeType: 'category',
+        children: [
+          {
+            id: 'plc-cmd-2',
+            label: '读取 D0~D10 寄存器快照',
+            nodeType: 'command',
+            isDefault: true,
+            prompt: '读取 PLC 当前 D0~D10 数据寄存器快照',
+            commandCode: 'PLC_READ_REG --start=D0 --count=11',
+            expectedReply:
+              '已采集寄存器快照：PLC 运行模式 `RUN`，扫描周期 4.2ms，无 I/O 报警。',
+          },
+        ],
+      },
+    ],
     guideBullets: [
       'PLC 型号与当前梯形图逻辑程序段',
       'X/Y 软元件地址及监控表异常状态',
@@ -580,6 +699,7 @@ export const INITIAL_CUSTOM_AGENTS: HardwareAgentItem[] = [
     type: 'custom',
     industry: '智慧农业',
     status: 'published',
+    schoolName: '新大陆工程技术学院',
     author: '李**',
     publishDate: '2026-03-22 09:15',
     views: '850',
@@ -621,6 +741,7 @@ export const INITIAL_CUSTOM_AGENTS: HardwareAgentItem[] = [
     type: 'custom',
     industry: '工业互联网',
     status: 'published',
+    schoolName: '新大陆工程技术学院',
     author: '王**',
     publishDate: '2026-03-20 16:40',
     views: '690',
@@ -662,6 +783,7 @@ export const INITIAL_CUSTOM_AGENTS: HardwareAgentItem[] = [
     type: 'custom',
     industry: '物联网',
     status: 'published',
+    schoolName: '华东理工实训示范校',
     author: '陈**',
     publishDate: '2026-03-18 11:05',
     views: '540',
@@ -698,13 +820,119 @@ export const INITIAL_CUSTOM_AGENTS: HardwareAgentItem[] = [
 ];
 
 const CUSTOM_AGENTS_STORAGE_KEY = 'uusima_custom_agents_v1';
+const AGENT_OPEN_COUNTS_STORAGE_KEY = 'uusima_agent_open_counts_v1';
+const AGENT_DESIGN_CONFIGS_STORAGE_KEY = 'uusima_agent_design_configs_v1';
+
+export const AGENT_OPEN_COUNT_UPDATED_EVENT = 'agent-open-count-updated';
+export const AGENT_DESIGN_UPDATED_EVENT = 'agent-design-updated';
+
+export function parseViewsToCount(views: string): number {
+  const clean = (views || '').trim().toLowerCase();
+  if (!clean) return 0;
+  if (clean.endsWith('k')) {
+    const num = parseFloat(clean.slice(0, -1));
+    return Number.isNaN(num) ? 0 : Math.round(num * 1000);
+  }
+  const num = parseInt(clean.replace(/,/g, ''), 10);
+  return Number.isNaN(num) ? 0 : num;
+}
+
+export function formatOpenCount(count: number): string {
+  if (count >= 1000) {
+    return `${(count / 1000).toFixed(1)}k`;
+  }
+  return String(count);
+}
+
+function loadOpenCountDeltaMap(): Record<string, number> {
+  try {
+    const raw = localStorage.getItem(AGENT_OPEN_COUNTS_STORAGE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === 'object') return parsed;
+    }
+  } catch {
+    // ignore storage errors
+  }
+  return {};
+}
+
+export function getAgentOpenCount(agent: HardwareAgentItem): number {
+  const base = agent.openCount ?? parseViewsToCount(agent.views);
+  const deltaMap = loadOpenCountDeltaMap();
+  const delta = Number(deltaMap[String(agent.id)] || 0);
+  return base + (Number.isNaN(delta) ? 0 : delta);
+}
+
+export function recordAgentOpen(agentId: number): number {
+  const deltaMap = loadOpenCountDeltaMap();
+  const key = String(agentId);
+  const nextDelta = Number(deltaMap[key] || 0) + 1;
+  deltaMap[key] = nextDelta;
+  try {
+    localStorage.setItem(AGENT_OPEN_COUNTS_STORAGE_KEY, JSON.stringify(deltaMap));
+  } catch {
+    // ignore storage errors
+  }
+  window.dispatchEvent(new CustomEvent(AGENT_OPEN_COUNT_UPDATED_EVENT, { detail: { agentId } }));
+  return nextDelta;
+}
+
+export function loadStoredDesignConfigsMap(): Record<number, AgentDesignConfig> {
+  try {
+    const raw = localStorage.getItem(AGENT_DESIGN_CONFIGS_STORAGE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === 'object') return parsed;
+    }
+  } catch {
+    // ignore storage errors
+  }
+  return {};
+}
+
+export function getStoredDesignConfig(agentId: number): AgentDesignConfig | undefined {
+  const map = loadStoredDesignConfigsMap();
+  return map[agentId];
+}
+
+export function saveStoredDesignConfigsMap(map: Record<number, AgentDesignConfig>): void {
+  try {
+    localStorage.setItem(AGENT_DESIGN_CONFIGS_STORAGE_KEY, JSON.stringify(map));
+  } catch {
+    // ignore storage errors
+  }
+  window.dispatchEvent(new CustomEvent(AGENT_DESIGN_UPDATED_EVENT));
+}
+
+export function getResolvedConnectionFields(
+  agent?: HardwareAgentItem | null
+): ConnectionFieldConfig[] | undefined {
+  if (!agent) return undefined;
+  const stored = getStoredDesignConfig(agent.id);
+  if (stored?.connectionFields && stored.connectionFields.length > 0) {
+    return stored.connectionFields;
+  }
+  return agent.connectionFields;
+}
+
+export function getResolvedCommandTree(
+  agent?: HardwareAgentItem | null
+): CommandTreeNode[] | undefined {
+  if (!agent) return undefined;
+  const stored = getStoredDesignConfig(agent.id);
+  if (stored?.commandTree && stored.commandTree.length > 0) {
+    return stored.commandTree;
+  }
+  return agent.commandTree;
+}
 
 export function getCustomAgents(): HardwareAgentItem[] {
   try {
     const raw = localStorage.getItem(CUSTOM_AGENTS_STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed) && parsed.length > 0) {
+      if (Array.isArray(parsed)) {
         return parsed;
       }
     }
@@ -720,6 +948,13 @@ export function saveCustomAgents(agents: HardwareAgentItem[]): void {
   } catch {
     // ignore storage errors
   }
+  window.dispatchEvent(new CustomEvent(AGENT_DESIGN_UPDATED_EVENT));
+}
+
+export function getTenantPublishedCustomAgents(tenantName: string): HardwareAgentItem[] {
+  return getCustomAgents().filter(
+    (a) => a.status === 'published' && (!a.schoolName || a.schoolName === tenantName)
+  );
 }
 
 export function getAllAgents(): HardwareAgentItem[] {
@@ -730,11 +965,15 @@ export function getAgentById(id: number): HardwareAgentItem | undefined {
   return getAllAgents().find((a) => a.id === id);
 }
 
-export function getHotAgents(): HardwareAgentItem[] {
-  const all = getAllAgents();
-  // Return the 4 featured hot agents in specific order: 7 (USR-TCP232-410s), 4 (ECU-1251), 1 (AI实训平台), 8 (智慧大棚)
-  const hotIds = [7, 4, 1, 8];
-  return hotIds
-    .map((id) => all.find((a) => a.id === id))
-    .filter((a): a is HardwareAgentItem => Boolean(a));
+/**
+ * 热门设备智能体：取系统智能体及同租户下已发布自定义智能体中使用量（打开次数）最多的前 4 个
+ */
+export function getHotAgents(tenantName?: string): HardwareAgentItem[] {
+  const customVisible = tenantName
+    ? getTenantPublishedCustomAgents(tenantName)
+    : getCustomAgents().filter((a) => a.status === 'published');
+  const published = [...INITIAL_SYSTEM_AGENTS, ...customVisible];
+  return [...published]
+    .sort((a, b) => getAgentOpenCount(b) - getAgentOpenCount(a))
+    .slice(0, 4);
 }

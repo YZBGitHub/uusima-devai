@@ -29,9 +29,19 @@ import {
   Trash2,
   X,
   Home as HomeIcon,
+  Folder,
+  Star,
 } from 'lucide-react';
 import { cn } from '../lib/utils';
-import { getAgentById, HardwareAgentItem, AgentCommand } from '../data/agents';
+import {
+  getAgentById,
+  getResolvedCommandTree,
+  getResolvedConnectionFields,
+  HardwareAgentItem,
+  AgentCommand,
+} from '../data/agents';
+import type { CommandTreeNode } from '../components/AgentDesignModal';
+import { collectDefaultCommandsFromTree } from '../lib/defaultKnowledgeBase';
 import DeviceConnectPreModal from '../components/DeviceConnectPreModal';
 
 interface DetailMessage {
@@ -171,6 +181,7 @@ export default function AgentDetail() {
   // Accordion states for 设备指令库
   const [troubleshootOpen, setTroubleshootOpen] = useState(true);
   const [controlOpen, setControlOpen] = useState(true);
+  const [expandedCmdTreeIds, setExpandedCmdTreeIds] = useState<Record<string, boolean>>({});
 
   // Chat interaction states
   const [inputValue, setInputValue] = useState('');
@@ -346,6 +357,35 @@ export default function AgentDetail() {
     handleSendQuery(cmd.prompt, cmd.response, cmd.codeHint);
   };
 
+  const resolvedCommandTree = getResolvedCommandTree(agent);
+  const resolvedConnectionFields = getResolvedConnectionFields(agent);
+
+  const defaultCommandsForView: Array<{
+    id: string;
+    label: string;
+    prompt: string;
+    response?: string;
+    codeHint?: string;
+  }> = React.useMemo(() => {
+    if (resolvedCommandTree && resolvedCommandTree.length > 0) {
+      const defaults = collectDefaultCommandsFromTree(resolvedCommandTree).map(({ node }) => ({
+        id: node.id,
+        label: node.label,
+        prompt: node.prompt || node.label,
+        response: node.expectedReply,
+        codeHint: node.commandCode,
+      }));
+      if (defaults.length > 0) return defaults;
+    }
+    return agent.troubleshootingCommands.slice(0, 2).map((c) => ({
+      id: c.id,
+      label: c.label,
+      prompt: c.prompt,
+      response: c.response,
+      codeHint: c.codeHint,
+    }));
+  }, [resolvedCommandTree, agent.troubleshootingCommands]);
+
   const handleNewChat = () => {
     const newId = `session-${Date.now()}`;
     const newSession: ChatSession = {
@@ -508,74 +548,162 @@ export default function AgentDetail() {
           </div>
         </div>
 
-        {/* Device Command Library Card (设备指令库) */}
+        {/* Device Command Library Card (默认指令与设备指令库) */}
         <div className="bg-white rounded-2xl border border-slate-200/80 shadow-2xs flex-1 min-h-[210px] flex flex-col overflow-hidden">
           <div className="bg-gradient-to-r from-indigo-600 to-purple-600 text-white text-xs font-bold py-2.5 px-4 text-center tracking-wide shrink-0">
-            设备指令库
+            默认指令与指令库
           </div>
 
           <div className="flex-1 overflow-y-auto divide-y divide-slate-100">
-            {/* 排错能力 */}
-            <div>
-              <button
-                onClick={() => setTroubleshootOpen((v) => !v)}
-                className="w-full flex items-center justify-between px-3.5 py-2.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition-colors"
-              >
-                <span className="flex items-center gap-1.5">
-                  <Wrench className="w-3.5 h-3.5 text-purple-600" />
-                  <span>排错能力</span>
-                </span>
-                {troubleshootOpen ? (
-                  <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
-                ) : (
-                  <ChevronRight className="w-3.5 h-3.5 text-slate-400" />
-                )}
-              </button>
-              {troubleshootOpen && (
-                <div className="px-2.5 pb-2.5 space-y-1">
-                  {agent.troubleshootingCommands.map((cmd) => (
+            {defaultCommandsForView.length > 0 && (
+              <div className="p-2.5 bg-amber-50/40 space-y-1.5">
+                <div className="px-1 text-[11px] font-bold text-amber-800 flex items-center gap-1">
+                  <Star className="w-3 h-3 fill-amber-500 text-amber-500" />
+                  <span>默认指令</span>
+                </div>
+                <div className="space-y-1">
+                  {defaultCommandsForView.map((cmd) => (
                     <button
-                      key={cmd.id}
-                      onClick={() => handleCommandClick(cmd)}
-                      className="w-full text-left px-2.5 py-1.5 rounded-lg text-[11px] text-slate-600 hover:text-purple-700 hover:bg-purple-50/70 transition-colors leading-snug"
+                      key={`def-${cmd.id}`}
+                      onClick={() => handleSendQuery(cmd.prompt, cmd.response, cmd.codeHint)}
+                      className="w-full text-left px-2.5 py-1.5 rounded-lg text-[11px] bg-white hover:bg-amber-50 text-slate-700 hover:text-amber-800 border border-amber-200/70 transition-colors leading-snug flex items-center justify-between gap-1.5"
                     >
-                      {cmd.label}
+                      <span className="truncate">{cmd.label}</span>
+                      <Star className="w-2.5 h-2.5 fill-amber-400 text-amber-500 shrink-0" />
                     </button>
                   ))}
                 </div>
-              )}
-            </div>
+              </div>
+            )}
 
-            {/* 控制能力 */}
-            <div>
-              <button
-                onClick={() => setControlOpen((v) => !v)}
-                className="w-full flex items-center justify-between px-3.5 py-2.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition-colors"
-              >
-                <span className="flex items-center gap-1.5">
-                  <Sliders className="w-3.5 h-3.5 text-indigo-600" />
-                  <span>控制能力</span>
-                </span>
-                {controlOpen ? (
-                  <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
-                ) : (
-                  <ChevronRight className="w-3.5 h-3.5 text-slate-400" />
-                )}
-              </button>
-              {controlOpen && (
-                <div className="px-2.5 pb-2.5 space-y-1">
-                  {agent.controlCommands.map((cmd) => (
-                    <button
-                      key={cmd.id}
-                      onClick={() => handleCommandClick(cmd)}
-                      className="w-full text-left px-2.5 py-1.5 rounded-lg text-[11px] text-slate-600 hover:text-indigo-700 hover:bg-indigo-50/70 transition-colors leading-snug"
-                    >
-                      {cmd.label}
-                    </button>
-                  ))}
+            {resolvedCommandTree && resolvedCommandTree.length > 0 ? (
+              <div className="p-2 space-y-1">
+                {(() => {
+                  const renderNode = (node: CommandTreeNode, depth = 0): React.ReactNode => {
+                    const isExpanded = expandedCmdTreeIds[node.id] ?? true;
+                    if (node.nodeType === 'category') {
+                      return (
+                        <div key={node.id} className="space-y-0.5">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setExpandedCmdTreeIds((prev) => ({
+                                ...prev,
+                                [node.id]: !(prev[node.id] ?? true),
+                              }))
+                            }
+                            style={{ paddingLeft: `${depth * 10 + 8}px` }}
+                            className="w-full flex items-center justify-between pr-2 py-1.5 rounded-lg text-xs font-semibold text-slate-700 hover:bg-slate-50 transition-colors"
+                          >
+                            <span className="flex items-center gap-1.5 min-w-0">
+                              <Folder className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
+                              <span className="truncate">{node.label}</span>
+                            </span>
+                            {isExpanded ? (
+                              <ChevronDown className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                            ) : (
+                              <ChevronRight className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                            )}
+                          </button>
+                          {isExpanded && node.children && node.children.length > 0 && (
+                            <div className="space-y-0.5">
+                              {node.children.map((ch) => renderNode(ch, depth + 1))}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    }
+
+                    return (
+                      <button
+                        type="button"
+                        key={node.id}
+                        onClick={() =>
+                          handleSendQuery(
+                            node.prompt || node.label,
+                            node.expectedReply ||
+                              `已向【${agent.name}】下发指令「${node.label}」，设备响应状态正常。`,
+                            node.commandCode
+                          )
+                        }
+                        style={{ paddingLeft: `${depth * 10 + 10}px` }}
+                        className="w-full text-left pr-2.5 py-1.5 rounded-lg text-[11px] text-slate-600 hover:text-purple-700 hover:bg-purple-50/70 transition-colors leading-snug flex items-center justify-between gap-1.5"
+                      >
+                        <span className="truncate">{node.label}</span>
+                        {node.isDefault && (
+                          <Star className="w-3 h-3 fill-amber-400 text-amber-500 shrink-0" title="默认指令" />
+                        )}
+                      </button>
+                    );
+                  };
+                  return resolvedCommandTree.map((n) => renderNode(n, 0));
+                })()}
+              </div>
+            ) : (
+              <>
+                {/* 排错能力 */}
+                <div>
+                  <button
+                    onClick={() => setTroubleshootOpen((v) => !v)}
+                    className="w-full flex items-center justify-between px-3.5 py-2.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition-colors"
+                  >
+                    <span className="flex items-center gap-1.5">
+                      <Wrench className="w-3.5 h-3.5 text-purple-600" />
+                      <span>排错能力</span>
+                    </span>
+                    {troubleshootOpen ? (
+                      <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
+                    ) : (
+                      <ChevronRight className="w-3.5 h-3.5 text-slate-400" />
+                    )}
+                  </button>
+                  {troubleshootOpen && (
+                    <div className="px-2.5 pb-2.5 space-y-1">
+                      {agent.troubleshootingCommands.map((cmd) => (
+                        <button
+                          key={cmd.id}
+                          onClick={() => handleCommandClick(cmd)}
+                          className="w-full text-left px-2.5 py-1.5 rounded-lg text-[11px] text-slate-600 hover:text-purple-700 hover:bg-purple-50/70 transition-colors leading-snug"
+                        >
+                          {cmd.label}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
-              )}
-            </div>
+
+                {/* 控制能力 */}
+                <div>
+                  <button
+                    onClick={() => setControlOpen((v) => !v)}
+                    className="w-full flex items-center justify-between px-3.5 py-2.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition-colors"
+                  >
+                    <span className="flex items-center gap-1.5">
+                      <Sliders className="w-3.5 h-3.5 text-indigo-600" />
+                      <span>控制能力</span>
+                    </span>
+                    {controlOpen ? (
+                      <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
+                    ) : (
+                      <ChevronRight className="w-3.5 h-3.5 text-slate-400" />
+                    )}
+                  </button>
+                  {controlOpen && (
+                    <div className="px-2.5 pb-2.5 space-y-1">
+                      {agent.controlCommands.map((cmd) => (
+                        <button
+                          key={cmd.id}
+                          onClick={() => handleCommandClick(cmd)}
+                          className="w-full text-left px-2.5 py-1.5 rounded-lg text-[11px] text-slate-600 hover:text-indigo-700 hover:bg-indigo-50/70 transition-colors leading-snug"
+                        >
+                          {cmd.label}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
           </div>
         </div>
 
@@ -787,6 +915,29 @@ export default function AgentDetail() {
                         <p className="text-sm text-slate-700 pt-1">
                           期待您的输入，我将竭诚为您服务！
                         </p>
+
+                        {defaultCommandsForView.length > 0 && (
+                          <div className="pt-2 border-t border-slate-100 space-y-2">
+                            <div className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                              <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-500" />
+                              <span>默认指令快捷触发</span>
+                            </div>
+                            <div className="flex flex-wrap gap-2">
+                              {defaultCommandsForView.map((cmd) => (
+                                <button
+                                  key={`welcome-def-${cmd.id}`}
+                                  type="button"
+                                  onClick={() =>
+                                    handleSendQuery(cmd.prompt, cmd.response, cmd.codeHint)
+                                  }
+                                  className="px-3 py-1.5 rounded-xl bg-amber-50/80 hover:bg-amber-100 text-amber-900 border border-amber-200 text-xs font-medium transition-colors"
+                                >
+                                  {cmd.label}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        )}
                       </div>
                     </div>
 
@@ -988,6 +1139,7 @@ export default function AgentDetail() {
       <DeviceConnectPreModal
         open={connectModalOpen}
         agentName={agent.name}
+        fields={resolvedConnectionFields}
         primaryLabel="确认连接"
         showSkipOption={false}
         onStartWithConnect={(_, summary) => executeConnect(summary)}

@@ -63,6 +63,22 @@ export const TENANT_LIST: TenantItem[] = [
 
 const TENANT_STORAGE_KEY = 'uusima_active_tenant_id_v1';
 const USER_STORAGE_KEY = 'uusima_active_user_v1';
+export const TENANT_UPDATED_EVENT = 'uusima-tenant-updated';
+
+const DEFAULT_TENANT = TENANT_LIST[1] || TENANT_LIST[0];
+
+export function getActiveTenant(): TenantItem {
+  try {
+    const savedId = localStorage.getItem(TENANT_STORAGE_KEY);
+    if (savedId) {
+      const found = TENANT_LIST.find((t) => t.id === savedId);
+      if (found) return found;
+    }
+  } catch {
+    // ignore
+  }
+  return DEFAULT_TENANT;
+}
 
 interface UserProfile {
   name: string;
@@ -85,13 +101,7 @@ export default function UserTenantMenu() {
   const [isOpen, setIsOpen] = useState(false);
   const [viewMode, setViewMode] = useState<'main' | 'tenant'>('main');
 
-  const [activeTenantId, setActiveTenantId] = useState<string>(() => {
-    try {
-      return localStorage.getItem(TENANT_STORAGE_KEY) || TENANT_LIST[0].id;
-    } catch {
-      return TENANT_LIST[0].id;
-    }
-  });
+  const [activeTenantId, setActiveTenantId] = useState<string>(() => getActiveTenant().id);
 
   const [userProfile, setUserProfile] = useState<UserProfile>(() => {
     try {
@@ -108,7 +118,7 @@ export default function UserTenantMenu() {
   const [isLoggedOutNotice, setIsLoggedOutNotice] = useState(false);
 
   const activeTenant =
-    TENANT_LIST.find((t) => t.id === activeTenantId) || TENANT_LIST[0];
+    TENANT_LIST.find((t) => t.id === activeTenantId) || DEFAULT_TENANT;
 
   // Close on outside click or Escape
   useEffect(() => {
@@ -137,6 +147,7 @@ export default function UserTenantMenu() {
     } catch {
       // ignore
     }
+    window.dispatchEvent(new CustomEvent<TenantItem>(TENANT_UPDATED_EVENT, { detail: tenant }));
     setViewMode('main');
   };
 

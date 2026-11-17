@@ -771,8 +771,10 @@ export default function PlatformSystemConfigPanel({
                   <input
                     type="text"
                     required
+                    maxLength={40}
                     value={assistantNameDraft}
                     onChange={(e) => setAssistantNameDraft(e.target.value)}
+                    placeholder="必填，1~40字符"
                     className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-slate-900 focus:outline-none focus:border-indigo-500"
                   />
                 </div>
@@ -780,8 +782,10 @@ export default function PlatformSystemConfigPanel({
                   <label className="block font-bold text-slate-700 mb-1">默认欢迎语</label>
                   <input
                     type="text"
+                    maxLength={200}
                     value={welcomeMsgDraft}
                     onChange={(e) => setWelcomeMsgDraft(e.target.value)}
+                    placeholder="选填，最多200字符"
                     className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-slate-900 focus:outline-none focus:border-indigo-500"
                   />
                 </div>
@@ -923,8 +927,10 @@ export default function PlatformSystemConfigPanel({
                       <input
                         type="text"
                         required
+                        maxLength={60}
                         value={kbNameDraft}
                         onChange={(e) => setKbNameDraft(e.target.value)}
+                        placeholder="必填，1~60字符"
                         className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-slate-900 focus:outline-none focus:border-indigo-500"
                       />
                     </div>
@@ -932,8 +938,10 @@ export default function PlatformSystemConfigPanel({
                       <label className="block font-bold text-slate-700 mb-1">知识库用途说明</label>
                       <input
                         type="text"
+                        maxLength={200}
                         value={kbDescDraft}
                         onChange={(e) => setKbDescDraft(e.target.value)}
+                        placeholder="选填，最多200字符"
                         className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-slate-900 focus:outline-none focus:border-indigo-500"
                       />
                     </div>
@@ -1296,10 +1304,12 @@ export default function PlatformSystemConfigPanel({
                     <input
                       type="text"
                       required
+                      maxLength={40}
                       value={editingCmdNode.label}
                       onChange={(e) =>
                         setEditingCmdNode({ ...editingCmdNode, label: e.target.value })
                       }
+                      placeholder="必填，1~40字符"
                       className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl focus:outline-none focus:border-indigo-500"
                     />
                   </div>
@@ -1480,9 +1490,11 @@ export default function PlatformSystemConfigPanel({
                   </label>
                   <input
                     type="text"
+                    required
+                    maxLength={100}
                     value={docNameInput}
                     onChange={(e) => setDocNameInput(e.target.value)}
-                    placeholder="例如：实训室Modbus网关接入与排错规范.md"
+                    placeholder="必填，1~100字符，例如：实训室Modbus网关接入与排错规范.md"
                     className="w-full px-3.5 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
                   />
                 </div>

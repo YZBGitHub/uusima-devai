@@ -13,7 +13,15 @@ import {
   LayoutGrid, List, Sparkles
 } from 'lucide-react';
 import { cn } from '../lib/utils';
-import { INITIAL_SYSTEM_AGENTS } from '../data/agents';
+import {
+  INITIAL_SYSTEM_AGENTS,
+  INITIAL_CUSTOM_AGENTS,
+  getCustomAgents,
+  saveCustomAgents,
+  loadStoredDesignConfigsMap,
+  saveStoredDesignConfigsMap,
+  type HardwareAgentItem,
+} from '../data/agents';
 import OverviewDashboard from '../components/OverviewDashboard';
 import AgentKnowledgeModal, { AgentKnowledgeBase } from '../components/AgentKnowledgeModal';
 import AgentDebugModal from '../components/AgentDebugModal';
@@ -1314,12 +1322,70 @@ export default function Console() {
 
   // 智能体设计配置状态 (连接配置 + MCP工具配置 + 多级指令库)
   const [agentDesignConfigsMap, setAgentDesignConfigsMap] = useState<Record<number, AgentDesignConfig>>(() => {
-    const map: Record<number, AgentDesignConfig> = {};
+    const stored = loadStoredDesignConfigsMap();
+    const map: Record<number, AgentDesignConfig> = { ...stored };
     initialCustomAgents.forEach((a) => {
-      map[a.id] = createDefaultDesignConfig(a.hardwareModel, a.name);
+      if (!map[a.id]) {
+        map[a.id] = createDefaultDesignConfig(a.hardwareModel, a.name);
+      }
     });
     return map;
   });
+
+  // 同步后台已发布的自定义智能体与设计配置到共享存储，供智能体大厅与对话界面读取
+  const syncCustomAgentsToPublicStore = (
+    nextAgents: CustomAgent[],
+    nextDesignMap: Record<number, AgentDesignConfig>
+  ) => {
+    saveStoredDesignConfigsMap(nextDesignMap);
+    const publishedFromConsole: HardwareAgentItem[] = nextAgents
+      .filter((a) => a.status === 'published')
+      .map((a) => {
+        const design = nextDesignMap[a.id];
+        return {
+          id: a.id,
+          name: a.name,
+          shortTitle: a.name,
+          desc: a.desc,
+          type: 'custom',
+          industry: '物联网',
+          status: 'published',
+          schoolName: a.schoolName,
+          author: a.schoolName,
+          publishDate: a.lastDebugTime,
+          views: String(a.callCount),
+          openCount: a.callCount,
+          popularity: 85,
+          port: design?.mcpConfig?.protocol
+            ? `${design.mcpConfig.protocol} / Custom`
+            : 'TCP / Custom',
+          model: a.hardwareModel,
+          image: a.coverImage,
+          deviceImage: a.coverImage,
+          connectionFields: design?.connectionFields,
+          commandTree: design?.commandTree,
+          guideBullets: [
+            `设备型号（${a.hardwareModel}）及当前连接通道参数`,
+            '触发故障的操作步骤或报错日志截图',
+            '需要排查或验证的指令/寄存器信息',
+          ],
+          guideTip: `当前智能体已关联 ${a.knowledgeCount} 个私有知识库，支持按预设指令快速排错`,
+          guideHighlight: 'Connected OK',
+          troubleshootingCommands: [],
+          controlCommands: [],
+        };
+      });
+
+    // 保留预置初始公开自定义智能体（11~14），并与控制台已发布项合并去重
+    const existingPublic = getCustomAgents().filter((item) =>
+      INITIAL_CUSTOM_AGENTS.some((init) => init.id === item.id)
+    );
+    const baseList = existingPublic.length > 0 ? existingPublic : INITIAL_CUSTOM_AGENTS;
+    const mergedMap = new Map<number, HardwareAgentItem>();
+    baseList.forEach((item) => mergedMap.set(item.id, item));
+    publishedFromConsole.forEach((item) => mergedMap.set(item.id, item));
+    saveCustomAgents(Array.from(mergedMap.values()));
+  };
 
   // 智能体知识库管理状态 (多知识库列表 + 文件配置 + 自动向量化)
   const [agentKnowledgeBasesMap, setAgentKnowledgeBasesMap] = useState<Record<number, AgentKnowledgeBase[]>>(
@@ -2279,23 +2345,38 @@ export default function Console() {
     setIsAssetModalOpen(true);
   };
 
-  // 删除资产
+  // 删除资产（弹窗提示确认）
   const handleDeleteAsset = (id: number, name: string) => {
-    // 检查是否有子级
     const hasChildren = assets.some((a) => a.parentId === id);
     if (hasChildren) {
-      alert(`无法删除【${name}】：该资产下包含下级资产节点，请先删除或转移下级资产。`);
+      setConfirmDialog({
+        title: '无法删除资产',
+        message: `资产【${name}】下包含下级资产节点，请先删除或转移所有下级资产后再试。`,
+        confirmLabel: '知道了',
+        variant: 'warning',
+        onConfirm: () => setConfirmDialog(null),
+      });
       return;
     }
-    if (confirm(`确认删除资产【${name}】？已关联此资产的终端将重置为未关联。`)) {
-      setAssets(assets.filter((a) => a.id !== id));
-      // 将关联了该资产的终端清空
-      setTerminals(
-        terminals.map((t) =>
-          t.assetId === id ? { ...t, assetId: null, assetName: '' } : t
-        )
-      );
-    }
+
+    const boundCount = terminals.filter((t) => t.assetId === id).length;
+    setConfirmDialog({
+      title: '确认删除资产',
+      message:
+        boundCount > 0
+          ? `确认删除资产【${name}】？当前有 ${boundCount} 台终端绑定此资产，删除后这些终端将重置为未关联状态。`
+          : `确认删除资产【${name}】？删除后无法恢复。`,
+      confirmLabel: '确认删除',
+      variant: 'danger',
+      onConfirm: () => {
+        setAssets((prev) => prev.filter((a) => a.id !== id));
+        setTerminals((prev) =>
+          prev.map((t) => (t.assetId === id ? { ...t, assetId: null, assetName: '' } : t))
+        );
+        setConfirmDialog(null);
+        showFirmwareToast(`已删除资产【${name}】`);
+      },
+    });
   };
 
   // 绑定资产确认 (用户要求 2)
@@ -2482,12 +2563,14 @@ export default function Console() {
   // 发布 / 取消发布自定义智能体
   const handleTogglePublishAgent = (agent: CustomAgent) => {
     const nextStatus: 'published' | 'draft' = agent.status === 'published' ? 'draft' : 'published';
-    setCustomAgents((prev) =>
-      prev.map((a) => (a.id === agent.id ? { ...a, status: nextStatus } : a))
+    const nextAgents = customAgents.map((a) =>
+      a.id === agent.id ? { ...a, status: nextStatus } : a
     );
+    setCustomAgents(nextAgents);
+    syncCustomAgentsToPublicStore(nextAgents, agentDesignConfigsMap);
     showFirmwareToast(
       nextStatus === 'published'
-        ? `已发布智能体【${agent.name}】至智能体大厅`
+        ? `已发布智能体【${agent.name}】，同租户设备大厅与硬件终端已同步可见`
         : `已取消发布智能体【${agent.name}】`
     );
   };
@@ -2535,28 +2618,30 @@ export default function Console() {
       payload.basic.selectedKbIds.includes(kb.id)
     );
 
-    setCustomAgents((prev) =>
-      prev.map((a) =>
-        a.id === agentId
-          ? {
-              ...a,
-              name: payload.basic.name,
-              hardwareModel: payload.basic.hardwareModel,
-              coverImage: payload.basic.coverImage,
-              desc: payload.basic.desc,
-              knowledgeCount: selectedKbs.length,
-            }
-          : a
-      )
+    const nextAgents = customAgents.map((a) =>
+      a.id === agentId
+        ? {
+            ...a,
+            name: payload.basic.name,
+            hardwareModel: payload.basic.hardwareModel,
+            coverImage: payload.basic.coverImage,
+            desc: payload.basic.desc,
+            knowledgeCount: selectedKbs.length,
+          }
+        : a
     );
+    const nextDesignMap = {
+      ...agentDesignConfigsMap,
+      [agentId]: payload.designConfig,
+    };
+
+    setCustomAgents(nextAgents);
     setAgentKnowledgeBasesMap((prev) => ({
       ...prev,
       [agentId]: selectedKbs,
     }));
-    setAgentDesignConfigsMap((prev) => ({
-      ...prev,
-      [agentId]: payload.designConfig,
-    }));
+    setAgentDesignConfigsMap(nextDesignMap);
+    syncCustomAgentsToPublicStore(nextAgents, nextDesignMap);
     setDesigningAgent(null);
     showFirmwareToast(`已保存智能体【${payload.basic.name}】的设计配置`);
   };
@@ -2569,7 +2654,9 @@ export default function Console() {
       confirmLabel: '确认删除',
       variant: 'danger',
       onConfirm: () => {
-        setCustomAgents((prev) => prev.filter((a) => a.id !== id));
+        const nextAgents = customAgents.filter((a) => a.id !== id);
+        setCustomAgents(nextAgents);
+        syncCustomAgentsToPublicStore(nextAgents, agentDesignConfigsMap);
         if (designingAgent?.id === id) setDesigningAgent(null);
         setConfirmDialog(null);
         showFirmwareToast(`已删除智能体【${target?.name || ''}】`);
@@ -4901,13 +4988,21 @@ export default function Console() {
               <form onSubmit={handleSaveAsset} className="space-y-3.5 text-xs">
                 {/* 1. 资产名称 */}
                 <div>
-                  <label className="block text-slate-700 font-bold mb-1">资产名称 *</label>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-slate-700 font-bold">
+                      资产名称 <span className="text-rose-500">*</span>
+                    </label>
+                    <span className="text-[11px] text-slate-400 font-mono">
+                      {assetFormData.name.length}/50
+                    </span>
+                  </div>
                   <input
                     type="text"
                     required
+                    maxLength={50}
                     value={assetFormData.name}
                     onChange={(e) => setAssetFormData({ ...assetFormData, name: e.target.value })}
-                    placeholder="如：信息楼 A栋 / A-301 物联实训室 / 智能台位01"
+                    placeholder="必填，1~50个字符，如：信息楼 A栋 / A-301 物联实训室"
                     className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
@@ -4939,24 +5034,40 @@ export default function Console() {
 
                 {/* 3. 排序号 */}
                 <div>
-                  <label className="block text-slate-700 font-bold mb-1">排序号</label>
+                  <label className="block text-slate-700 font-bold mb-1">
+                    排序号 <span className="text-rose-500">*</span>
+                  </label>
                   <input
                     type="number"
+                    required
+                    min={1}
+                    max={9999}
                     value={assetFormData.orderNum}
-                    onChange={(e) => setAssetFormData({ ...assetFormData, orderNum: Number(e.target.value) || 1 })}
-                    placeholder="数字越小排在越前"
+                    onChange={(e) =>
+                      setAssetFormData({
+                        ...assetFormData,
+                        orderNum: Math.min(9999, Math.max(1, Number(e.target.value) || 1)),
+                      })
+                    }
+                    placeholder="1~9999，数字越小排在越前"
                     className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
 
                 {/* 4. 备注 */}
                 <div>
-                  <label className="block text-slate-700 font-bold mb-1">备注说明</label>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-slate-700 font-bold">备注说明</label>
+                    <span className="text-[11px] text-slate-400 font-mono">
+                      {assetFormData.remark.length}/200
+                    </span>
+                  </div>
                   <textarea
                     rows={2}
+                    maxLength={200}
                     value={assetFormData.remark}
                     onChange={(e) => setAssetFormData({ ...assetFormData, remark: e.target.value })}
-                    placeholder="例如：可容纳实验设备工位数量、实验指导教师负责区域等"
+                    placeholder="选填，最多200字，例如：可容纳实验设备工位数量、责任区域等"
                     className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
@@ -6765,36 +6876,58 @@ export default function Console() {
 
               <form onSubmit={handleSaveNewAgent} className="space-y-4 text-xs">
                 <div>
-                  <label className="block text-slate-700 font-medium mb-1">智能体名称 *</label>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-slate-700 font-medium">
+                      智能体名称 <span className="text-rose-500">*</span>
+                    </label>
+                    <span className="text-[11px] text-slate-400 font-mono">
+                      {newAgentForm.name.length}/50
+                    </span>
+                  </div>
                   <input
                     type="text"
                     required
+                    maxLength={50}
                     value={newAgentForm.name}
                     onChange={(e) => setNewAgentForm({ ...newAgentForm, name: e.target.value })}
-                    placeholder="如：智能电表通讯与自诊断智能体"
+                    placeholder="必填，1~50字，如：智能电表通讯与自诊断智能体"
                     className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-slate-700 font-medium mb-1">适配硬件型号 *</label>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-slate-700 font-medium">
+                      适配硬件型号 <span className="text-rose-500">*</span>
+                    </label>
+                    <span className="text-[11px] text-slate-400 font-mono">
+                      {newAgentForm.hardwareModel.length}/50
+                    </span>
+                  </div>
                   <input
                     type="text"
                     required
+                    maxLength={50}
                     value={newAgentForm.hardwareModel}
                     onChange={(e) => setNewAgentForm({ ...newAgentForm, hardwareModel: e.target.value })}
-                    placeholder="例如：ADVANTECH-ECU1251、USR-IO424、STM32F407"
+                    placeholder="必填，1~50字，如：ADVANTECH-ECU1251、USR-IO424"
                     className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-slate-700 font-medium mb-1">功能描述</label>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-slate-700 font-medium">功能描述</label>
+                    <span className="text-[11px] text-slate-400 font-mono">
+                      {newAgentForm.desc.length}/200
+                    </span>
+                  </div>
                   <textarea
                     rows={3}
+                    maxLength={200}
                     value={newAgentForm.desc}
                     onChange={(e) => setNewAgentForm({ ...newAgentForm, desc: e.target.value })}
-                    placeholder="简述该智能体在实验实训中的排错与自愈场景"
+                    placeholder="选填，最多200字，简述该智能体的排错与自愈场景"
                     className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
@@ -6987,27 +7120,39 @@ export default function Console() {
                 {/* 2. 固件名称与版本号 (两列) */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                   <div>
-                    <label className="block font-bold text-slate-700 mb-1">
-                      固件名称 <b className="text-rose-500">*</b>
-                    </label>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="block font-bold text-slate-700">
+                        固件名称 <b className="text-rose-500">*</b>
+                      </label>
+                      <span className="text-[11px] text-slate-400 font-mono">
+                        {newFirmwareName.length}/60
+                      </span>
+                    </div>
                     <input
                       type="text"
+                      maxLength={60}
                       value={newFirmwareName}
                       onChange={(e) => setNewFirmwareName(e.target.value)}
-                      placeholder="例如: 物联边缘网关通用标准固件"
+                      placeholder="1~60字符，如: 物联边缘网关通用标准固件"
                       className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-hidden focus:border-indigo-500 text-xs text-slate-900"
                     />
                   </div>
 
                   <div>
-                    <label className="block font-bold text-slate-700 mb-1">
-                      固件版本 <b className="text-rose-500">*</b>
-                    </label>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="block font-bold text-slate-700">
+                        固件版本 <b className="text-rose-500">*</b>
+                      </label>
+                      <span className="text-[11px] text-slate-400 font-mono">
+                        {newFirmwareVersion.length}/30
+                      </span>
+                    </div>
                     <input
                       type="text"
+                      maxLength={30}
                       value={newFirmwareVersion}
                       onChange={(e) => setNewFirmwareVersion(e.target.value)}
-                      placeholder="例如: v3.5.2-RELEASE"
+                      placeholder="1~30字符，如: v3.5.2-RELEASE"
                       className="w-full px-3 py-2 font-mono bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-hidden focus:border-indigo-500 text-xs text-slate-900"
                     />
                   </div>
@@ -7086,14 +7231,20 @@ export default function Console() {
 
                 {/* 5. 备注 / 更新说明 */}
                 <div>
-                  <label className="block font-bold text-slate-700 mb-1">
-                    备注 / 更新说明 <b className="text-rose-500">*</b>
-                  </label>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block font-bold text-slate-700">
+                      备注 / 更新说明 <b className="text-rose-500">*</b>
+                    </label>
+                    <span className="text-[11px] text-slate-400 font-mono">
+                      {newFirmwareRemark.length}/500
+                    </span>
+                  </div>
                   <textarea
                     rows={3}
+                    maxLength={500}
                     value={newFirmwareRemark}
                     onChange={(e) => setNewFirmwareRemark(e.target.value)}
-                    placeholder="请详细描述固件更新内容，例如修复哪些通信丢包问题、新增的自愈协议支持及升级要求..."
+                    placeholder="必填，最多500字，描述固件更新内容、协议支持及升级要求..."
                     className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-hidden focus:border-indigo-500 text-xs text-slate-900"
                   />
                 </div>

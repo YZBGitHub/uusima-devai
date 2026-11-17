@@ -35,6 +35,7 @@ import {
 import { cn } from '../lib/utils';
 import type { AgentKnowledgeBase } from './AgentKnowledgeModal';
 import type { AgentDesignConfig, CommandTreeNode } from './AgentDesignModal';
+import { collectDefaultCommandsFromTree } from '../lib/defaultKnowledgeBase';
 import DeviceConnectPreModal from './DeviceConnectPreModal';
 
 export interface DebugCustomAgentInfo {
@@ -228,6 +229,20 @@ export default function AgentDebugModal({
 
   const activeSession = sessions.find((s) => s.id === activeSessionId) || sessions[0];
   const commands = buildCommandsForAgent(agent);
+
+  const defaultCommandsForView = React.useMemo(() => {
+    if (designConfig?.commandTree && designConfig.commandTree.length > 0) {
+      const defaults = collectDefaultCommandsFromTree(designConfig.commandTree).map(({ node }) => ({
+        id: node.id,
+        label: node.label,
+        prompt: node.prompt || node.label,
+        response: node.expectedReply,
+        codeHint: node.commandCode,
+      }));
+      if (defaults.length > 0) return defaults;
+    }
+    return commands.troubleshoot.slice(0, 2);
+  }, [designConfig?.commandTree, commands.troubleshoot]);
 
   const allVectorizedDocs = knowledgeBases.flatMap((kb) =>
     kb.docs
@@ -537,13 +552,41 @@ export default function AgentDebugModal({
             </div>
           </div>
 
-          {/* Device Command Library Card (设备指令库) */}
+          {/* Device Command Library Card (默认指令与指令库) */}
           <div className="bg-white rounded-2xl border border-slate-200/80 shadow-2xs flex-1 min-h-[200px] flex flex-col overflow-hidden">
             <div className="bg-gradient-to-r from-indigo-600 to-purple-600 text-white text-xs font-bold py-2.5 px-4 text-center tracking-wide shrink-0">
-              设备指令库
+              默认指令与指令库
             </div>
 
             <div className="flex-1 overflow-y-auto divide-y divide-slate-100">
+              {defaultCommandsForView.length > 0 && (
+                <div className="p-2.5 bg-amber-50/40 space-y-1.5">
+                  <div className="px-1 text-[11px] font-bold text-amber-800 flex items-center gap-1">
+                    <Star className="w-3 h-3 fill-amber-500 text-amber-500" />
+                    <span>默认指令</span>
+                  </div>
+                  <div className="space-y-1">
+                    {defaultCommandsForView.map((cmd) => (
+                      <button
+                        type="button"
+                        key={`dbg-def-${cmd.id}`}
+                        onClick={() =>
+                          handleSendQuery(
+                            cmd.prompt,
+                            cmd.response ||
+                              `已向【${agent.name}】下发指令「${cmd.label}」，设备响应状态正常。`,
+                            cmd.codeHint
+                          )
+                        }
+                        className="w-full text-left px-2.5 py-1.5 rounded-lg text-[11px] bg-white hover:bg-amber-50 text-slate-700 hover:text-amber-800 border border-amber-200/70 transition-colors leading-snug flex items-center justify-between gap-1.5"
+                      >
+                        <span className="truncate">{cmd.label}</span>
+                        <Star className="w-2.5 h-2.5 fill-amber-400 text-amber-500 shrink-0" />
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
               {designConfig && designConfig.commandTree.length > 0 ? (
                 <div className="p-2 space-y-1">
                   {(() => {
@@ -894,6 +937,34 @@ export default function AgentDebugModal({
                           <p className="text-sm text-slate-700 pt-1">
                             期待您的输入，我将竭诚为您服务！
                           </p>
+
+                          {defaultCommandsForView.length > 0 && (
+                            <div className="pt-2 border-t border-slate-100 space-y-2">
+                              <div className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                                <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-500" />
+                                <span>默认指令快捷触发</span>
+                              </div>
+                              <div className="flex flex-wrap gap-2">
+                                {defaultCommandsForView.map((cmd) => (
+                                  <button
+                                    key={`dbg-welcome-def-${cmd.id}`}
+                                    type="button"
+                                    onClick={() =>
+                                      handleSendQuery(
+                                        cmd.prompt,
+                                        cmd.response ||
+                                          `已向【${agent.name}】下发指令「${cmd.label}」，设备响应状态正常。`,
+                                        cmd.codeHint
+                                      )
+                                    }
+                                    className="px-3 py-1.5 rounded-xl bg-amber-50/80 hover:bg-amber-100 text-amber-900 border border-amber-200 text-xs font-medium transition-colors"
+                                  >
+                                    {cmd.label}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          )}
                         </div>
                       </div>
 

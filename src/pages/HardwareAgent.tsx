@@ -13,7 +13,11 @@ import {
   INITIAL_SYSTEM_AGENTS,
   HardwareAgentItem,
   getCustomAgents,
+  recordAgentOpen,
+  getResolvedConnectionFields,
+  AGENT_DESIGN_UPDATED_EVENT,
 } from '../data/agents';
+import { getActiveTenant, TENANT_UPDATED_EVENT } from '../components/UserTenantMenu';
 import DeviceConnectPreModal from '../components/DeviceConnectPreModal';
 
 const industries = ['全部', '物联网', '工业互联网', '人工智能', '智慧农业'];
@@ -26,11 +30,30 @@ export default function HardwareAgent() {
   const [sourceType, setSourceType] = useState<'all' | 'system' | 'custom'>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedIndustry, setSelectedIndustry] = useState('全部');
-  const [customAgents] = useState<HardwareAgentItem[]>(() => getCustomAgents());
+  const [customAgents, setCustomAgents] = useState<HardwareAgentItem[]>(() => getCustomAgents());
+  const [activeTenantName, setActiveTenantName] = useState<string>(() => getActiveTenant().name);
   const [currentPage, setCurrentPage] = useState(1);
   const [pendingAgent, setPendingAgent] = useState<HardwareAgentItem | null>(null);
 
-  const publishedCustomAgents = customAgents.filter((a) => a.status === 'published');
+  useEffect(() => {
+    const syncCustomAgents = () => setCustomAgents(getCustomAgents());
+    const syncTenant = () => setActiveTenantName(getActiveTenant().name);
+    window.addEventListener(AGENT_DESIGN_UPDATED_EVENT, syncCustomAgents);
+    window.addEventListener(TENANT_UPDATED_EVENT, syncTenant);
+    window.addEventListener('storage', syncCustomAgents);
+    window.addEventListener('storage', syncTenant);
+    return () => {
+      window.removeEventListener(AGENT_DESIGN_UPDATED_EVENT, syncCustomAgents);
+      window.removeEventListener(TENANT_UPDATED_EVENT, syncTenant);
+      window.removeEventListener('storage', syncCustomAgents);
+      window.removeEventListener('storage', syncTenant);
+    };
+  }, []);
+
+  // 同租户下可见：系统发布全网可见，用户发布仅当前激活租户下可见
+  const publishedCustomAgents = customAgents.filter(
+    (a) => a.status === 'published' && (!a.schoolName || a.schoolName === activeTenantName)
+  );
   const allAgents = [...INITIAL_SYSTEM_AGENTS, ...publishedCustomAgents];
 
   // Apply source type filter (全部, 系统发布, 用户发布)
@@ -70,6 +93,7 @@ export default function HardwareAgent() {
   const paginatedAgents = filteredAgents.slice(startIdx, startIdx + PAGE_SIZE);
 
   const handleLaunchAgent = (agent: HardwareAgentItem) => {
+    recordAgentOpen(agent.id);
     setPendingAgent(agent);
   };
 
@@ -336,6 +360,7 @@ export default function HardwareAgent() {
       <DeviceConnectPreModal
         open={Boolean(pendingAgent)}
         agentName={pendingAgent?.name}
+        fields={getResolvedConnectionFields(pendingAgent)}
         onSkipConnect={() => {
           if (!pendingAgent) return;
           const targetId = pendingAgent.id;

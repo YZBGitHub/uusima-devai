@@ -426,9 +426,10 @@ export default function AgentKnowledgeModal({
                 <input
                   type="text"
                   required
+                  maxLength={60}
                   value={kbFormName}
                   onChange={(e) => setKbFormName(e.target.value)}
-                  placeholder="例如：智能制造与工业互联网知识库"
+                  placeholder="必填，1~60字符，如：智能制造与工业互联网知识库"
                   className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-xs text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
                 />
               </div>
@@ -439,9 +440,10 @@ export default function AgentKnowledgeModal({
                 </label>
                 <textarea
                   rows={3}
+                  maxLength={200}
                   value={kbFormDesc}
                   onChange={(e) => setKbFormDesc(e.target.value)}
-                  placeholder="请输入该知识库收录的教学资料范围..."
+                  placeholder="选填，最多200字，请输入该知识库收录的教学资料范围..."
                   className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-xs text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 resize-none"
                 />
               </div>

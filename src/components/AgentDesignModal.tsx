@@ -1327,41 +1327,53 @@ export default function AgentDesignModal({
               <div className="lg:col-span-7 space-y-4">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
-                    <label className="block font-bold text-slate-700 mb-1.5">
-                      智能体名称 <span className="text-rose-500">*</span>
-                    </label>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <label className="block font-bold text-slate-700">
+                        智能体名称 <span className="text-rose-500">*</span>
+                      </label>
+                      <span className="text-[11px] text-slate-400 font-mono">{name.length}/50</span>
+                    </div>
                     <input
                       type="text"
+                      maxLength={50}
                       value={name}
                       onChange={(e) => setName(e.target.value)}
-                      placeholder="例如：工业网关协议排错智能体"
+                      placeholder="1~50字符，例如：工业网关协议排错智能体"
                       className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
                     />
                   </div>
 
                   <div>
-                    <label className="block font-bold text-slate-700 mb-1.5">
-                      设备型号 <span className="text-rose-500">*</span>
-                    </label>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <label className="block font-bold text-slate-700">
+                        设备型号 <span className="text-rose-500">*</span>
+                      </label>
+                      <span className="text-[11px] text-slate-400 font-mono">{hardwareModel.length}/50</span>
+                    </div>
                     <input
                       type="text"
+                      maxLength={50}
                       value={hardwareModel}
                       onChange={(e) => setHardwareModel(e.target.value)}
-                      placeholder="例如：ADVANTECH-ECU1251"
+                      placeholder="1~50字符，例如：ADVANTECH-ECU1251"
                       className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 font-mono focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
                     />
                   </div>
                 </div>
 
                 <div>
-                  <label className="block font-bold text-slate-700 mb-1.5">
-                    简要描述
-                  </label>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="block font-bold text-slate-700">
+                      简要描述
+                    </label>
+                    <span className="text-[11px] text-slate-400 font-mono">{desc.length}/200</span>
+                  </div>
                   <textarea
                     rows={3}
+                    maxLength={200}
                     value={desc}
                     onChange={(e) => setDesc(e.target.value)}
-                    placeholder="简述该硬件智能体的教学应用、故障诊断与自愈场景..."
+                    placeholder="选填，最多200字，简述该硬件智能体的教学应用与排错场景..."
                     className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 resize-none"
                   />
                 </div>

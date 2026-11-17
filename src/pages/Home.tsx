@@ -1,4 +1,4 @@
-import React, { useState, type FormEvent } from 'react';
+import React, { useState, useEffect, type FormEvent } from 'react';
 import { motion } from 'motion/react';
 import {
   Sparkles,
@@ -10,7 +10,25 @@ import {
 import { Link, useNavigate } from 'react-router-dom';
 import { cn } from '../lib/utils';
 import { triggerAIAssistant } from '../components/AIAssistantWidget';
-import { getHotAgents, type HardwareAgentItem } from '../data/agents';
+import {
+  INITIAL_SYSTEM_AGENTS,
+  getHotAgents,
+  getTenantPublishedCustomAgents,
+  getAgentOpenCount,
+  formatOpenCount,
+  recordAgentOpen,
+  getResolvedConnectionFields,
+  AGENT_OPEN_COUNT_UPDATED_EVENT,
+  AGENT_DESIGN_UPDATED_EVENT,
+  type HardwareAgentItem,
+} from '../data/agents';
+import { getActiveTenant, TENANT_UPDATED_EVENT } from '../components/UserTenantMenu';
+import {
+  loadDefaultKbConfig,
+  collectDefaultCommandsFromTree,
+  flattenCommandsFromTree,
+  DEFAULT_KB_UPDATED_EVENT,
+} from '../lib/defaultKnowledgeBase';
 import DeviceConnectPreModal from '../components/DeviceConnectPreModal';
 
 const industryBadgeStyles: Record<string, string> = {
@@ -20,59 +38,77 @@ const industryBadgeStyles: Record<string, string> = {
   智慧农业: 'bg-amber-50 text-amber-700 border-amber-200',
 };
 
-// Presets for Quick AI Input
-const quickPrompts = [
-  {
-    label: 'USR-410s 串口丢包自愈',
-    query: 'USR-TCP232-410s 串口服务器波特率不匹配导致丢包，如何排查？',
-    steps: [
-      'MCP 连接通道 192.168.1.101:8234 (正常)',
-      '检测发现当前通信波特率 9600 与控制器 115200 不一致',
-      '建议方案: 切换为 115200bps，无校验位，数据位 8',
-    ],
-    mcpAction: '一键同步推荐参数到终端',
-  },
-  {
-    label: 'ECU-1251 Modbus 协议解析',
-    query: 'ECU-1251 读取温湿度从站提示 Modbus CRC 校验错误。',
-    steps: [
-      'RS485 物理总线阻抗分析: 反射波形畸变率 31%',
-      '诊断归因: 未开启终端匹配电阻',
-      '建议方案: 闭合网关侧板 S1 开关(120Ω 负载)并刷新采集',
-    ],
-    mcpAction: '下发虚拟负载自检指令',
-  },
-  {
-    label: '视觉分拣台机械臂零位校准',
-    query: '视觉分拣台机械臂每次上电抓取偏离 5mm，如何校准？',
-    steps: [
-      '读取视觉九点标定坐标矩阵与轴2编码器零点',
-      '检测到轴2零位脉冲偏移 +124 counts',
-      '建议方案: 运行一键回零宏指令并同步视觉标定补偿',
-    ],
-    mcpAction: '执行智能九点自标定',
-  },
-  {
-    label: '大棚传感器数据断流修复',
-    query: '智慧大棚 3 号节点土壤湿度传感器数据中断超过 20 分钟。',
-    steps: [
-      'ZigBee 拓扑探测: 节点 0x3F1A 供电跌至 2.4V',
-      '已激活光伏冗余供电回路并重新握手',
-      '建议方案: 维持当前低功耗上报策略，数据链路已恢复',
-    ],
-    mcpAction: '下发拓扑自愈指令',
-  },
-];
+interface PresetCommandChip {
+  id: string;
+  label: string;
+  query: string;
+}
+
+function loadPresetCommandsFromConfig(): PresetCommandChip[] {
+  const cfg = loadDefaultKbConfig();
+  const defaults = collectDefaultCommandsFromTree(cfg.commandTree).map(({ node }) => ({
+    id: node.id,
+    label: node.label,
+    query: node.prompt || node.label,
+  }));
+  if (defaults.length > 0) return defaults;
+  return flattenCommandsFromTree(cfg.commandTree)
+    .slice(0, 4)
+    .map((node) => ({
+      id: node.id,
+      label: node.label,
+      query: node.prompt || node.label,
+    }));
+}
 
 export default function Home() {
   const navigate = useNavigate();
   const [inputValue, setInputValue] = useState('');
   const [pendingAgent, setPendingAgent] = useState<HardwareAgentItem | null>(null);
-  const hotAgents = getHotAgents();
+  const [presetCommands, setPresetCommands] = useState<PresetCommandChip[]>(() =>
+    loadPresetCommandsFromConfig()
+  );
+  const [hotAgents, setHotAgents] = useState<HardwareAgentItem[]>(() =>
+    getHotAgents(getActiveTenant().name)
+  );
+  const [totalPublishedCount, setTotalPublishedCount] = useState<number>(
+    () => INITIAL_SYSTEM_AGENTS.length + getTenantPublishedCustomAgents(getActiveTenant().name).length
+  );
 
-  const handleSelectPrompt = (prompt: typeof quickPrompts[0]) => {
-    setInputValue(prompt.query);
-    triggerAIAssistant(prompt.query, prompt.steps, prompt.mcpAction, { centered: true });
+  useEffect(() => {
+    const syncPreset = () => setPresetCommands(loadPresetCommandsFromConfig());
+    const syncAgents = () => {
+      const tenantName = getActiveTenant().name;
+      setHotAgents(getHotAgents(tenantName));
+      setTotalPublishedCount(
+        INITIAL_SYSTEM_AGENTS.length + getTenantPublishedCustomAgents(tenantName).length
+      );
+    };
+
+    window.addEventListener(DEFAULT_KB_UPDATED_EVENT, syncPreset);
+    window.addEventListener(AGENT_OPEN_COUNT_UPDATED_EVENT, syncAgents);
+    window.addEventListener(AGENT_DESIGN_UPDATED_EVENT, syncAgents);
+    window.addEventListener(TENANT_UPDATED_EVENT, syncAgents);
+    window.addEventListener('storage', syncPreset);
+    window.addEventListener('storage', syncAgents);
+    return () => {
+      window.removeEventListener(DEFAULT_KB_UPDATED_EVENT, syncPreset);
+      window.removeEventListener(AGENT_OPEN_COUNT_UPDATED_EVENT, syncAgents);
+      window.removeEventListener(AGENT_DESIGN_UPDATED_EVENT, syncAgents);
+      window.removeEventListener(TENANT_UPDATED_EVENT, syncAgents);
+      window.removeEventListener('storage', syncPreset);
+      window.removeEventListener('storage', syncAgents);
+    };
+  }, []);
+
+  const handleSelectPreset = (cmd: PresetCommandChip) => {
+    setInputValue(cmd.query);
+    triggerAIAssistant(cmd.query, undefined, undefined, { centered: true });
+  };
+
+  const handleOpenAgent = (agent: HardwareAgentItem) => {
+    recordAgentOpen(agent.id);
+    setPendingAgent(agent);
   };
 
   const handleFormSubmit = (e: FormEvent) => {
@@ -148,12 +184,12 @@ export default function Home() {
             </div>
           </form>
 
-          {/* Quick Prompts */}
+          {/* Preset Commands from Platform System Config */}
           <div className="flex items-center justify-center gap-2 mt-3 flex-wrap">
-            {quickPrompts.map((p, idx) => (
+            {presetCommands.map((p) => (
               <button
-                key={idx}
-                onClick={() => handleSelectPrompt(p)}
+                key={p.id}
+                onClick={() => handleSelectPreset(p)}
                 className="text-xs px-3 py-1.5 rounded-full bg-white text-slate-600 border border-slate-200 hover:border-purple-300 hover:text-purple-700 hover:bg-purple-50/50 shadow-2xs transition-all"
               >
                 {p.label}
@@ -163,7 +199,7 @@ export default function Home() {
         </motion.div>
       </div>
 
-      {/* 4 Popular Hardware Agents */}
+      {/* 4 Popular Hardware Agents (Sorted by open count descending) */}
       <div className="max-w-5xl w-full mx-auto shrink-0 mb-3">
         <div className="flex items-center justify-between mb-2.5 px-1">
           <div className="flex items-center gap-2">
@@ -174,7 +210,7 @@ export default function Home() {
             to="/agents"
             className="text-xs font-semibold text-purple-600 hover:text-purple-800 flex items-center gap-1"
           >
-            <span>全部设备 (48+)</span>
+            <span>全部设备 ({totalPublishedCount})</span>
             <ArrowRight className="w-3.5 h-3.5" />
           </Link>
         </div>
@@ -183,7 +219,7 @@ export default function Home() {
           {hotAgents.map((agent) => (
             <div
               key={agent.id}
-              onClick={() => setPendingAgent(agent)}
+              onClick={() => handleOpenAgent(agent)}
               className="bg-white rounded-2xl border border-slate-200/80 p-3 shadow-xs hover:shadow-md hover:border-purple-300 transition-all duration-200 flex flex-col justify-between group cursor-pointer"
             >
               <div>
@@ -197,6 +233,9 @@ export default function Home() {
                     )}
                   >
                     {agent.industry}
+                  </span>
+                  <span className="absolute top-2 right-2 z-10 text-[10px] font-mono px-1.5 py-0.5 rounded bg-white/85 text-slate-600 border border-slate-200/70 backdrop-blur-xs">
+                    {formatOpenCount(getAgentOpenCount(agent))} 次打开
                   </span>
                   <img
                     src={agent.deviceImage}
@@ -222,7 +261,7 @@ export default function Home() {
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
-                    setPendingAgent(agent);
+                    handleOpenAgent(agent);
                   }}
                   className="shrink-0 px-2.5 py-1 rounded-lg bg-slate-900 hover:bg-purple-600 text-white text-xs font-medium transition-colors flex items-center gap-1 whitespace-nowrap"
                 >
@@ -239,6 +278,7 @@ export default function Home() {
       <DeviceConnectPreModal
         open={Boolean(pendingAgent)}
         agentName={pendingAgent?.name}
+        fields={getResolvedConnectionFields(pendingAgent)}
         onSkipConnect={() => {
           if (!pendingAgent) return;
           const targetId = pendingAgent.id;

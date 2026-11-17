@@ -5,7 +5,6 @@ import {
   Sparkles,
   X,
   Send,
-  Zap,
   RefreshCw,
   Minimize2,
   Maximize2,
@@ -253,8 +252,7 @@ export default function AIAssistantWidget() {
 
   const buildGeneralAssistantReply = (
     query: string,
-    overrideSteps?: string[],
-    overrideAction?: string
+    overrideSteps?: string[]
   ): Omit<ChatMessage, 'id' | 'sender' | 'timestamp'> => {
     const cfg = defaultAiConfigRef.current;
     const allCmds = flattenCommandsFromTree(cfg.commandTree);
@@ -279,13 +277,12 @@ export default function AIAssistantWidget() {
       return {
         content:
           kbMatches.length > 0
-            ? `针对您咨询的问题【${query}】，已检索默认知识库（${cfg.kbName}）中的 ${kbMatches.length} 篇文档并完成诊断：`
-            : `针对您咨询的硬件问题【${query}】，已完成 MCP 协议探针寻址与诊断：`,
+            ? `针对您咨询的问题【${query}】，已自动检索默认知识库（${cfg.kbName}）中的 ${kbMatches.length} 篇文档并整理排查方案：`
+            : `针对您咨询的问题【${query}】，已结合预设知识指引整理排查步骤（如需连接实体硬件，请前往设备智能体大厅）：`,
         steps:
           kbMatches.length > 0
             ? [...overrideSteps, `知识库参考要点（${kbMatches[0].doc.name}）：${kbMatches[0].snippet}`]
             : overrideSteps,
-        mcpAction: overrideAction || matchedCmd?.commandCode || '下发智能自检与寄存器校准指令',
         kbCitations: citations.length > 0 ? citations : undefined,
       };
     }
@@ -293,46 +290,43 @@ export default function AIAssistantWidget() {
     if (matchedCmd || kbMatches.length > 0) {
       const steps: string[] = [];
       if (matchedCmd?.expectedReply) {
-        steps.push(`默认指令诊断参考（${matchedCmd.label}）：${matchedCmd.expectedReply}`);
+        steps.push(`预设指令参考方案（${matchedCmd.label}）：${matchedCmd.expectedReply}`);
       }
       kbMatches.forEach((m) => {
         steps.push(`【${m.doc.name}】${m.snippet}`);
       });
       if (steps.length === 1) {
-        steps.push('核对实训终端供电状态与物理接线，确认波特率/协议参数匹配。');
+        steps.push('核对终端供电状态与物理接线，确认波特率/协议参数匹配；如需实机调试，请前往设备智能体大厅连接设备。');
       }
 
       const leadContent =
         kbMatches.length > 0
-          ? `已读取「${cfg.kbName}」（共 ${completedTotal} 篇已向量化文档），为您命中 ${kbMatches.length} 篇相关知识文件${
-              matchedCmd ? `及默认指令【${matchedCmd.label}】` : ''
+          ? `已自动检索「${cfg.kbName}」（共 ${completedTotal} 篇已向量化文档），为您命中 ${kbMatches.length} 篇相关知识文件${
+              matchedCmd ? `及预设指令【${matchedCmd.label}】` : ''
             }：`
-          : `已匹配系统默认指令【${matchedCmd?.label}】，诊断指引如下：`;
+          : `已匹配平台系统配置的预设指令【${matchedCmd?.label}】，知识指引如下：`;
 
       return {
         content: leadContent,
         steps,
-        mcpAction:
-          overrideAction || matchedCmd?.commandCode || '下发标准连通性与自检指令',
         kbCitations: citations.length > 0 ? citations : undefined,
       };
     }
 
     return {
-      content: `已检索「${cfg.kbName}」（${completedTotal} 篇已向量化文档），暂未命中完全匹配的专项条目，为您提供通用排查建议：`,
+      content: `已自动检索「${cfg.kbName}」（${completedTotal} 篇已向量化文档），暂未命中完全匹配的专项条目，为您提供通用排查思路：`,
       steps: [
-        '检索校园实训网关拓扑与目标设备 MCP 通信端口',
-        '读取设备寄存器配置、心跳上报状态及日志告警记录',
-        '建议方案：检查接线极性与供电电压，确认默认知识库内对应型号的配置文件已录入完整内容',
+        '核对硬件设备供电电压、总线接线极性及通信波特率参数是否与实训手册一致',
+        '检查默认知识库中是否已录入对应设备型号的技术手册与排错说明',
+        '通用助手不支持直接对接实体硬件，如需连接设备或下发控制指令，请前往「设备智能体大厅」开启对应设备智能体',
       ],
-      mcpAction: overrideAction || '执行硬件在线连通性测试',
     };
   };
 
   // Listen to general open-ai-assistant event
   useEffect(() => {
     const handleOpenAssistant = (e: Event) => {
-      const { query, steps, action, centered } = (e as CustomEvent).detail || {};
+      const { query, steps, centered } = (e as CustomEvent).detail || {};
       setMode('general');
       setMcpContext(null);
       setDockSide('right');
@@ -351,7 +345,7 @@ export default function AIAssistantWidget() {
         setIsTyping(true);
 
         setTimeout(() => {
-          const replyPayload = buildGeneralAssistantReply(query, steps, action);
+          const replyPayload = buildGeneralAssistantReply(query, steps);
           const aiMsg: ChatMessage = {
             id: String(Date.now() + 1),
             sender: 'assistant',
@@ -906,22 +900,17 @@ export default function AIAssistantWidget() {
                   </div>
                 )}
 
-                {msg.mcpAction && (
+                {(msg.steps?.length || msg.kbCitations?.length) && mode === 'general' && (
                   <div className="pt-2 border-t border-slate-100 flex items-center justify-between gap-2 flex-wrap">
-                    <button
-                      type="button"
-                      onClick={() => setActionToast(`已向实训设备下发指令：${msg.mcpAction}`)}
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-purple-600 text-white rounded-xl text-xs font-semibold hover:bg-purple-700 transition-colors shadow-2xs"
-                    >
-                      <Zap className="w-3.5 h-3.5" />
-                      <span>{msg.mcpAction}</span>
-                    </button>
+                    <span className="text-[11px] text-slate-400">
+                      通用助手基于平台默认知识库检索回答，不支持直接连接硬件
+                    </span>
                     <Link
                       to="/agents"
                       onClick={() => setIsOpen(false)}
-                      className="text-xs text-slate-400 hover:text-purple-600 font-medium"
+                      className="text-xs text-purple-600 hover:text-purple-700 font-medium"
                     >
-                      前往设备智能体大厅联调 →
+                      前往设备智能体大厅连接设备 →
                     </Link>
                   </div>
                 )}
@@ -939,7 +928,7 @@ export default function AIAssistantWidget() {
                 ? '正在生成协议接口与报文 Payload 配置...'
                 : mode === 'agent_create'
                   ? '正在解析设备型号并生成智能体方案...'
-                  : '正在调用 MCP 接口探测设备寄存器与故障自愈方案...'}
+                  : '正在检索平台默认知识库并生成回答...'}
             </span>
           </div>
         )}
